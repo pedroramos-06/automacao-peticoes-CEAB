@@ -1,10 +1,11 @@
 from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
+import re
 import pytest
 from ceab.extractor import extract_pdf, extract_html
 from ceab.models import AutomationError, Benefit
-from ceab.rules import decide, RPV, CALCULATION, ARCHIVE
+from ceab.rules import DATE_PATTERN, decide, normalize, normalize_date, RPV, CALCULATION, ARCHIVE
 
 BASE = Benefit('00000000000000000001', 'RESTABELECIMENTO', 'Auxílio', '03/07/2026', '01/09/2026')
 
@@ -138,3 +139,76 @@ def test_jud_types_reported_by_user_remain_outside_prd(kind):
     with pytest.raises(AutomationError) as exc:
         extract_html(HTML.replace('Restabelecimento</td>',kind+'</td>'))
     assert exc.value.code=='TIPO_DESCONHECIDO'
+
+
+@pytest.mark.parametrize('raw,expected',[
+    ('01/01/2026','01/01/2026'),
+    ('01.01.2026','01/01/2026'),
+    ('01-01-2026','01/01/2026'),
+    ('1/1/2026','01/01/2026'),
+    (' 5.3.2027 ','05/03/2027'),
+])
+def test_normalize_date_accepts_tolerant_separators_and_pads(raw,expected):
+    assert normalize_date(raw)==expected
+
+
+@pytest.mark.parametrize('raw',[
+    '01/01/26','2026-01-01','31/02/2026','',None,'01/01/20261','101/01/2026','01 / 01 / 2026',
+])
+def test_normalize_date_rejects_unsupported_formats(raw):
+    with pytest.raises(AutomationError) as exc: normalize_date(raw)
+    assert exc.value.code=='DATA_AUSENTE_OU_INVALIDA'
+
+
+@pytest.mark.parametrize('invisible',['\u200b','\u200c','\u200d','\u2060','\ufeff','\u00ad'])
+def test_normalize_removes_invisible_characters(invisible):
+    assert normalize('Tipo'+invisible)==normalize('Tipo')=='TIPO'
+    assert normalize('D'+invisible+'IB')=='DIB'
+
+
+def test_shared_date_pattern_does_not_read_cnj_process_number():
+    assert re.search(DATE_PATTERN,'0000000-00.2026.4.06.0001') is None
+
+
+def test_shared_date_pattern_keeps_date_followed_by_sentence_period():
+    match=re.search(DATE_PATTERN,'DIB: 30/09/2028.')
+    assert match and match[0]=='30/09/2028'
+
+
+HTML_CONCESSAO = '''<p>NÚMERO: 0000000-00.2026.4.06.0001</p>
+<table><tr><th colspan="3">TABELA COM DADOS PARA CUMPRIMENTO</th></tr>
+<tr><td>Tipo</td><td>Concessão</td><td></td></tr>
+<tr><td>Espécie</td><td>Auxílio</td><td>Previdenciário</td></tr>
+<tr><td>DIB</td><td>22-04-2025</td><td>Nota em 26/09/2024</td></tr>
+<tr><td>DIP</td><td>1-9-2026</td><td></td></tr>
+<tr><td>DCB</td><td>Regra cita 17/06/2015</td><td></td></tr>
+<tr><td>Valor dos atrasados</td><td>VALOR DEVIDO: R$ 100,00</td></tr>
+<tr><td>Honorários</td><td>R$ 0,00</td></tr></table>'''
+
+
+def test_hyphen_separated_dib_and_dip_are_normalized():
+    b=extract_html(HTML_CONCESSAO)
+    assert b.dib=='22/04/2025' and b.dip=='01/09/2026'
+    assert b.dcb is None
+
+
+@pytest.mark.parametrize('dcb,expected',[
+    ('30-09-2028','30/09/2028'),
+    ('30.09.2028 (prevista)','30/09/2028'),
+    ('30/09/2028.','30/09/2028'),
+    ('Regra cita 17/06/2015',None),
+    ('',None),
+])
+def test_optional_dcb_is_normalized_only_when_it_starts_the_cell(dcb,expected):
+    content=HTML_CONCESSAO.replace('<td>Regra cita 17/06/2015</td>',f'<td>{dcb}</td>')
+    assert extract_html(content).dcb==expected
+
+
+@pytest.mark.parametrize('field,current,raw',[
+    ('DIB','22-04-2025','22-04-26'),
+    ('DIP','1-9-2026','1-9-26'),
+])
+def test_two_digit_year_in_dib_or_dip_is_rejected(field,current,raw):
+    content=HTML_CONCESSAO.replace(f'<td>{field}</td><td>{current}</td>',f'<td>{field}</td><td>{raw}</td>')
+    with pytest.raises(AutomationError) as exc: extract_html(content)
+    assert exc.value.code=='DATA_AUSENTE_OU_INVALIDA'

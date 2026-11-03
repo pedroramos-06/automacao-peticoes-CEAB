@@ -12,20 +12,29 @@ RPV = ('381699451987351783813385015019', 'Expedir RPV')
 CALCULATION = ('381705321621977089288983043745', 'Aguarda Prazo Apresentacao de Calculo')
 ARCHIVE = ('381708438042580063585092174087', 'Aguarda Implantar Beneficio - Para Arquivar')
 
+# Caracteres invisíveis que a extração de PDF/HTML costuma introduzir nos rótulos e datas.
+INVISIBLE_CHARS = str.maketrans('', '', '\u200b\u200c\u200d\u2060\ufeff\u00ad')
+# Definição única do formato de data aceito: dia/mês de 1 ou 2 dígitos, separador
+# / . ou - (pode misturar) e ano com exatamente 4 dígitos. As bordas impedem que
+# a data seja lida dentro de uma sequência numérica maior (ex.: número CNJ).
+DATE_PATTERN = r'(?<!\d)(?<!\d[./-])(?P<day>\d{1,2})[./-](?P<month>\d{1,2})[./-](?P<year>\d{4})(?!\d)(?![./-]\d)'
+
 
 def normalize(text):
-    return re.sub(r'\s+', ' ', ''.join(c for c in unicodedata.normalize('NFD', text or '') if not unicodedata.combining(c))).strip().upper()
+    text = (text or '').translate(INVISIBLE_CHARS)
+    return re.sub(r'\s+', ' ', ''.join(c for c in unicodedata.normalize('NFD', text) if not unicodedata.combining(c))).strip().upper()
 
 
 def normalize_date(value):
-    value = (value or '').strip().replace('.', '/')
-    if not re.fullmatch(r'\d{2}/\d{2}/\d{4}', value):
+    text = (value or '').strip()
+    match = re.fullmatch(DATE_PATTERN, text)
+    if not match:
         raise AutomationError('DATA_AUSENTE_OU_INVALIDA', 'Data obrigatória ausente ou inválida (dd/mm/aaaa).')
     try:
-        datetime.strptime(value, '%d/%m/%Y')
+        parsed = datetime.strptime(f"{match['day']}/{match['month']}/{match['year']}", '%d/%m/%Y')
     except ValueError as exc:
-        raise AutomationError('DATA_AUSENTE_OU_INVALIDA', f'Data inválida: {value}.') from exc
-    return value
+        raise AutomationError('DATA_AUSENTE_OU_INVALIDA', f'Data inválida: {text}.') from exc
+    return parsed.strftime('%d/%m/%Y')
 
 
 def decide(benefit: Benefit) -> Decision:

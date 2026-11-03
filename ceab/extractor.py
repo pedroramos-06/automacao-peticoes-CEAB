@@ -5,9 +5,10 @@ from decimal import Decimal
 import pdfplumber
 from bs4 import BeautifulSoup
 from .models import AutomationError, Benefit
-from .rules import normalize, normalize_date, decide
+from .rules import DATE_PATTERN, normalize, normalize_date, decide
 
-DATE = r'\d{2}[./]\d{2}[./]\d{4}'
+# Formato de data compartilhado com normalize_date (nome mantido para importadores).
+DATE = DATE_PATTERN
 CNJ = r'\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}'
 MONEY = r'R\s*\$\s*([\d.]+,\d{2})'
 ANCHOR = 'TABELA COM DADOS PARA CUMPRIMENTO'
