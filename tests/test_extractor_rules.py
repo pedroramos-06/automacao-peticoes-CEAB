@@ -1,6 +1,7 @@
 from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
+import random
 import re
 import pytest
 from ceab.extractor import extract_pdf, extract_html
@@ -147,13 +148,18 @@ def test_jud_types_reported_by_user_remain_outside_prd(kind):
     ('01-01-2026','01/01/2026'),
     ('1/1/2026','01/01/2026'),
     (' 5.3.2027 ','05/03/2027'),
+    ('01/01/26','01/01/2026'),
+    ('1-2-05','01/02/2005'),
+    ('30.09.28','30/09/2028'),
+    ('31/12/99','31/12/2099'),
+    ('01/01/00','01/01/2000'),
 ])
 def test_normalize_date_accepts_tolerant_separators_and_pads(raw,expected):
     assert normalize_date(raw)==expected
 
 
 @pytest.mark.parametrize('raw',[
-    '01/01/26','2026-01-01','31/02/2026','',None,'01/01/20261','101/01/2026','01 / 01 / 2026',
+    '01/01/202','2026-01-01','31/02/2026','31/02/26','',None,'01/01/20261','101/01/2026','01 / 01 / 2026',
 ])
 def test_normalize_date_rejects_unsupported_formats(raw):
     with pytest.raises(AutomationError) as exc: normalize_date(raw)
@@ -173,6 +179,29 @@ def test_shared_date_pattern_does_not_read_cnj_process_number():
 def test_shared_date_pattern_keeps_date_followed_by_sentence_period():
     match=re.search(DATE_PATTERN,'DIB: 30/09/2028.')
     assert match and match[0]=='30/09/2028'
+
+
+def test_shared_date_pattern_keeps_two_digit_date_followed_by_sentence_period():
+    match=re.search(DATE_PATTERN,'DIB: 30/09/28.')
+    assert match and match[0]=='30/09/28'
+
+
+@pytest.mark.parametrize('cnj',[
+    '0000000-00.2026.4.06.0001',
+    '1234567-89.2025.4.06.3816',
+    '5001234-56.2024.4.06.3816',
+])
+def test_shared_date_pattern_does_not_read_varied_cnj_process_numbers(cnj):
+    assert re.search(DATE_PATTERN,cnj) is None
+
+
+def test_shared_date_pattern_does_not_read_generated_cnj_process_numbers():
+    random.seed(20261008)
+    for _ in range(2000):
+        cnj=(f"{random.randint(0,9999999):07d}-{random.randint(0,99):02d}."
+             f"{random.randint(1990,2030):04d}.{random.randint(0,9)}."
+             f"{random.randint(0,99):02d}.{random.randint(0,9999):04d}")
+        assert re.search(DATE_PATTERN,cnj) is None
 
 
 HTML_CONCESSAO = '''<p>NÚMERO: 0000000-00.2026.4.06.0001</p>
@@ -204,19 +233,22 @@ def test_optional_dcb_is_normalized_only_when_it_starts_the_cell(dcb,expected):
     assert extract_html(content).dcb==expected
 
 
-@pytest.mark.parametrize('field,current,raw',[
-    ('DIB','22-04-2025','22-04-26'),
-    ('DIP','1-9-2026','1-9-26'),
+@pytest.mark.parametrize('field,current,raw,expected,untouched',[
+    ('DIB','22-04-2025','22-04-26','22/04/2026',('dip','01/09/2026')),
+    ('DIP','1-9-2026','1-9-26','01/09/2026',('dib','22/04/2025')),
 ])
-def test_two_digit_year_in_dib_or_dip_is_rejected(field,current,raw):
+def test_two_digit_year_in_dib_or_dip_is_accepted(field,current,raw,expected,untouched):
     content=HTML_CONCESSAO.replace(f'<td>{field}</td><td>{current}</td>',f'<td>{field}</td><td>{raw}</td>')
-    with pytest.raises(AutomationError) as exc: extract_html(content)
-    assert exc.value.code=='DATA_AUSENTE_OU_INVALIDA'
+    b=extract_html(content)
+    assert getattr(b,field.lower())==expected
+    assert getattr(b,untouched[0])==untouched[1]
 
 
 @pytest.mark.parametrize('dcb,expected',[
     ('30-09-2028','30/09/2028'),
     ('30.09.2028 (prevista)','30/09/2028'),
+    ('30/09/28','30/09/2028'),
+    ('30.09.28 (prevista)','30/09/2028'),
     ('',None),
     ('Regra cita 17/06/2015',None),
     ('A apurar',None),
@@ -227,9 +259,10 @@ def test_optional_dcb_keeps_accepting_only_dates_at_the_cell_start(dcb,expected)
 
 
 @pytest.mark.parametrize('dcb',[
-    '30/09/28',
+    '30/09/202',
     '30/09/20281',
     '2028-09-30',
+    '31/02/28',
     '31/02/2028',
 ])
 def test_dcb_in_unrecognized_date_format_is_reported(dcb):
@@ -247,11 +280,27 @@ Tipo       CONCESSÃO
 Espécie    Benefício sintético
 DIB        22/04/2025
 DIP        01/09/2026
+DCB        30/09/20281
+Valor dos atrasados    VALOR DEVIDO: R$ 100,00
+Honorários R$ 0,00'''
+    values,amount=text_values(text)
+    assert values['dcb']=='30/09/20281'
+    with pytest.raises(AutomationError) as exc: build_benefit(text,values,amount)
+    assert exc.value.code=='DATA_AUSENTE_OU_INVALIDA'
+    assert '30/09/20281' in str(exc.value)
+
+
+def test_dcb_with_two_digit_year_in_layout_text_is_accepted():
+    from ceab.extractor import text_values,build_benefit
+    text='''NÚMERO: 00000000020264060001
+TABELA COM DADOS PARA CUMPRIMENTO
+Tipo       CONCESSÃO
+Espécie    Benefício sintético
+DIB        22/04/2025
+DIP        01/09/2026
 DCB        30/09/28
 Valor dos atrasados    VALOR DEVIDO: R$ 100,00
 Honorários R$ 0,00'''
     values,amount=text_values(text)
     assert values['dcb']=='30/09/28'
-    with pytest.raises(AutomationError) as exc: build_benefit(text,values,amount)
-    assert exc.value.code=='DATA_AUSENTE_OU_INVALIDA'
-    assert '30/09/28' in str(exc.value)
+    assert build_benefit(text,values,amount).dcb=='30/09/2028'

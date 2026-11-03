@@ -15,9 +15,10 @@ ARCHIVE = ('381708438042580063585092174087', 'Aguarda Implantar Beneficio - Para
 # Caracteres invisíveis que a extração de PDF/HTML costuma introduzir nos rótulos e datas.
 INVISIBLE_CHARS = str.maketrans('', '', '\u200b\u200c\u200d\u2060\ufeff\u00ad')
 # Definição única do formato de data aceito: dia/mês de 1 ou 2 dígitos, separador
-# / . ou - (pode misturar) e ano com exatamente 4 dígitos. As bordas impedem que
-# a data seja lida dentro de uma sequência numérica maior (ex.: número CNJ).
-DATE_PATTERN = r'(?<!\d)(?<!\d[./-])(?P<day>\d{1,2})[./-](?P<month>\d{1,2})[./-](?P<year>\d{4})(?!\d)(?![./-]\d)'
+# / . ou - (pode misturar) e ano com 4 dígitos ou 2 dígitos (2 dígitos são lidos
+# como 20XX). As bordas impedem que a data seja lida dentro de uma sequência
+# numérica maior (ex.: número CNJ).
+DATE_PATTERN = r'(?<!\d)(?<!\d[./-])(?P<day>\d{1,2})[./-](?P<month>\d{1,2})[./-](?P<year>\d{4}|\d{2})(?!\d)(?![./-]\d)'
 
 
 def normalize(text):
@@ -30,8 +31,11 @@ def normalize_date(value):
     match = re.fullmatch(DATE_PATTERN, text)
     if not match:
         raise AutomationError('DATA_AUSENTE_OU_INVALIDA', 'Data obrigatória ausente ou inválida (dd/mm/aaaa).')
+    # Ano com 2 dígitos é sempre 20XX; a conversão acontece somente aqui.
+    year = match['year']
+    year = 2000 + int(year) if len(year) == 2 else int(year)
     try:
-        parsed = datetime.strptime(f"{match['day']}/{match['month']}/{match['year']}", '%d/%m/%Y')
+        parsed = datetime.strptime(f"{match['day']}/{match['month']}/{year}", '%d/%m/%Y')
     except ValueError as exc:
         raise AutomationError('DATA_AUSENTE_OU_INVALIDA', f'Data inválida: {text}.') from exc
     return parsed.strftime('%d/%m/%Y')
