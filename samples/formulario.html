@@ -1,0 +1,20 @@
+<html><body><h1>Processo __PROCESS_NUMBER__</h1>
+    <select id="selEventoJudicial"><option value="null"></option><option value="40400695">Expedida/certificada a intimação eletrônica - Requisição - Cumprimento - Implantar Benefício</option><option value="40400877">Expedida/certificada a intimação eletrônica - Requisição - Cumprimento - Restabelecer Benefício por Incapacidade ou Assistencial</option></select>
+    <input type="checkbox" id="chkSelEventosDocTodos">
+    <select id="selLocalizadorDesativar" multiple><option value="a">Antigo</option><option value="b">Outro</option></select>
+    <label id="lblLocDesMarcarTodos" onclick="document.querySelectorAll('#selLocalizadorDesativar option').forEach(x=>x.selected=true)">Marcar todos</label>
+    <select id="selNovoLocalizador" onchange="window.changed=(window.changed||0)+1"><option value="null"></option><option value="381699451987351783813385015019">Expedir RPV - Expedir RPV</option><option value="381705321621977089288983043745">Aguarda Prazo Apresentacao de Calculo - Aguarda Prazo Apresentacao de Calculo</option><option value="381708438042580063585092174087">Aguarda Implantar Beneficio - Para Arquivar - Aguarda Implantar Beneficio - Para Arquivar</option></select>
+    <fieldset id="fldDadosBeneficio123456789">
+    <input id="txtNumBeneficio123456789" value="">
+    <input id="txtDataInicioBeneficio123456789" value="">
+    <input id="txtDataInicioPagamento123456789" value="">
+    <input id="txtDataInicioCessacao123456789" value="">
+    <input id="txtRMI123456789" value="123,00">
+    <input id="txtDataInicioIncapacidade123456789" value="20/01/2024">
+    <input id="txtCID123456789" value="preservar">
+    <input type="checkbox" id="chkDippd123456789">
+    <input type="radio" name="auto" value="N" checked>
+    <select id="parte"><option selected>Parte sintética</option></select>
+    </fieldset><input id="prazo" value="30">
+    <button id="btnSalvar" onclick="if(window.validation){alert('Prazo inválido');return};if(confirm('Confirmar?')){fetch('/sent?num_processo=__PROCESS_NUMBER__').then(()=>location.href='/process?num_processo=__PROCESS_NUMBER__')}">Intimar</button>
+    </body></html>
