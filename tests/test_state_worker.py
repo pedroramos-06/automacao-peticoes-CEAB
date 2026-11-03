@@ -214,6 +214,44 @@ def test_failed_unsent_process_can_be_reread_in_new_execution(tmp_path,status):
     assert b'Tabela ausente' in state.export_csv()
 
 
+def test_iniciar_payload_limit_processes_only_chosen_items(tmp_path):
+    state=State(tmp_path/'state.db')
+    run=state.create_execution(browser_mode='persistent')
+    state.execution_update(run,browser_open=1)
+    state.command(run,'iniciar',{'limit':2})
+    class Page:
+        def __init__(self,label): self.url=label
+    pages=[Page(str(i)) for i in range(5)]
+    numbers=[f'{i:09d}20264060001' for i in range(1,6)]
+    class Adapter:
+        def queue_items(self): return list(pages)
+        def open_process(self,item): return item
+        def identify(self,page): return numbers[pages.index(page)]
+        def read_document(self,page,number): return replace(B,process=number),'Proposta'
+        def fill(self,*args): pass
+    worker=Worker(state,run,Adapter())
+    assert worker.step()
+    assert worker.process_limit==2
+    assert len(worker.pending_items)==1  # 2 escolhidos; um já foi aberto
+    for _ in range(5): assert worker.step()
+    assert [r['number'] for r in state.processes(run)]==numbers[:2]
+    assert all(r['status']=='PREENCHIDO' for r in state.processes(run))
+    assert b'LIMITE_PROCESSOS' in state.export_csv()
+
+
+@pytest.mark.parametrize('payload,expected',[({},100),({'limit':None},100),({'limit':'x'},100),
+                                             ({'limit':0},1),({'limit':-5},1),({'limit':999},100),({'limit':'7'},7)])
+def test_iniciar_limit_is_validated_and_clamped(tmp_path,payload,expected):
+    state=State(tmp_path/'state.db')
+    run=state.create_execution(browser_mode='persistent')
+    state.execution_update(run,browser_open=1)
+    state.command(run,'iniciar',payload)
+    worker=Worker(state,run,object())
+    worker.controls()
+    assert worker.process_limit==expected and worker.started
+    assert state.execution(run)['queue_started']==1
+
+
 def test_error_with_reserved_send_never_becomes_retryable(tmp_path):
     state=State(tmp_path/'state.db')
     first=state.create_execution(False)

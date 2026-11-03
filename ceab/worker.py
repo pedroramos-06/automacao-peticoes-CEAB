@@ -8,6 +8,7 @@ from .eproc import Eproc
 from .models import AutomationError, Benefit
 from .state import State, now
 from .rules import decide
+from .selectors import QUEUE_LIMIT
 
 
 class Worker:
@@ -24,6 +25,7 @@ class Worker:
         self.paused = False
         self.cancelled = False
         self.queue_loaded = False
+        self.process_limit = QUEUE_LIMIT
         self.session_paused = False
         self.exit_event = threading.Event()
         self.test_mode = bool(state.execution(run)['test_mode'])
@@ -35,8 +37,12 @@ class Worker:
         for cmd in self.state.commands(self.run):
             kind,payload = cmd['type'],cmd['payload']
             if kind == 'iniciar':
+                try: limit = int(payload.get('limit',QUEUE_LIMIT))
+                except (AttributeError,TypeError,ValueError): limit = QUEUE_LIMIT
+                self.process_limit = max(1,min(QUEUE_LIMIT,limit))
                 self.started = True
                 self.state.execution_update(self.run,queue_started=1)
+                self.audit(None,'LIMITE_PROCESSOS',{'limit':self.process_limit},f'{self.process_limit} processo(s) nesta execução.')
             elif kind == 'fechar_navegador':
                 self.cancelled = self.close_requested = True
             elif kind == 'cancelar': self.cancelled = True
@@ -133,7 +139,7 @@ class Worker:
             return True
         if not self.queue_loaded:
             try:
-                self.state.execution_update(self.run,status='EXECUTANDO',message='Ajustando a lista para 100 processos. Cada processo será aberto, lido e preenchido antes de abrir o próximo.')
+                self.state.execution_update(self.run,status='EXECUTANDO',message=f'Ajustando a lista para {self.process_limit} processo(s). Cada processo será aberto, lido e preenchido antes de abrir o próximo.')
                 items = self.adapter.queue_items()
             except AutomationError as exc:
                 if exc.code != 'SESSAO_EXPIRADA':
@@ -147,7 +153,7 @@ class Worker:
                 self.state.execution_update(self.run,status='PAUSADO',message=str(exc))
                 self.audit(None,'SESSAO_EXPIRADA',{},str(exc))
                 return True
-            self.pending_items.extend(items)
+            self.pending_items.extend(items[:self.process_limit])
             self.queue_loaded = True
         if not self.pending and not self.pending_pages and self.pending_items:
             item = self.pending_items.popleft()

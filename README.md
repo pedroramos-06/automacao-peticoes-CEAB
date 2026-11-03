@@ -48,12 +48,16 @@ não expõe uma porta CDP para você configurar.
 3. A janela abre o eproc. Na primeira utilização, faça login manualmente
    nessa janela (inclusive certificado/token quando necessário). O painel
    espera; não tenta fazer login nem iniciar a fila automaticamente.
-4. Abra **Lista de Processos por Localizador** nessa janela.
+4. Abra **Lista de Processos por Localizador** nessa janela. Ajuste
+   **Processos a processar** (1 a 100; padrão **100**) para definir quantos
+   processos desta página o robô abrirá nesta execução.
    Clique em **Iniciar processamento**. O sistema marca **100** na paginação,
    seleciona **somente um processo** e clica em **Abrir os processos selecionados em abas/janelas**.
    Aguarda essa aba carregar, lê e preenche o formulário, mantém a aba para
-   conferência e então abre o próximo processo. As demais linhas ainda não
-   abertas permanecem na fila; não há carregamento de todas ao mesmo tempo.
+   conferência e então abre o próximo processo, até o total escolhido. As demais
+   linhas ainda não abertas permanecem na fila; não há carregamento de todas ao
+   mesmo tempo. O controle fica bloqueado quando a fila começa e volta a ficar
+   disponível se a lista precisar ser reiniciada.
    Confirmações dessa abertura são aceitas automaticamente. Se o eproc
    repetir o link no topo e no rodapé, somente um deles é clicado. Alertas
    ou falhas de JavaScript na abertura aparecem no painel.
@@ -105,7 +109,8 @@ A opção **Navegador já aberto (avançado)** mantém compatibilidade com a
 integração anterior. Somente essa opção exige CDP em uma sessão já aberta.
 Ela procura abas existentes por **Procurar aba aberta**, com porta manual
 opcional. Não é necessária para o fluxo padrão acima. Nesse modo, o worker
-não fecha o navegador do usuário.
+não fecha o navegador do usuário. A fila começa junto com a execução, sem o
+controle **Processos a processar**: todos os processos da página (até 100) entram na fila.
 
 ## Estado, privacidade e recuperação
 

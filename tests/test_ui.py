@@ -39,3 +39,21 @@ def test_review_edits_dates_and_approves(tmp_path,monkeypatch):
     next(button for button in ui.button if button.label=='Voltar ao painel').click().run()
     assert not ui.exception
     assert ui.radio[0].value=='Painel'
+
+
+def test_limit_slider_sends_payload_and_locks_after_queue_starts(tmp_path,monkeypatch):
+    path=tmp_path/'state.db'
+    monkeypatch.setenv('CEAB_STATE_PATH',str(path))
+    state=State(path)
+    run=state.create_execution(browser_mode='persistent')
+    state.execution_update(run,browser_open=1)
+    ui=AppTest.from_file(str(ROOT/'app.py')).run()
+    assert not ui.exception
+    assert ui.slider[0].value==100 and not ui.slider[0].disabled
+    ui.slider[0].set_value(5)
+    next(button for button in ui.button if button.label=='Iniciar processamento').click().run()
+    assert not ui.exception
+    assert [c['payload'] for c in state.commands(run) if c['type']=='iniciar']==[{'limit':5}]
+    state.execution_update(run,queue_started=1)
+    ui.run()
+    assert ui.slider[0].disabled

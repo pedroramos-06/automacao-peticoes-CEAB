@@ -6,6 +6,7 @@ from ceab.launcher import launch, probe_cdp, recover_dead_worker
 from ceab.discovery import find_existing_browsers, diagnose_browser
 from ceab.models import AutomationError, Benefit
 from ceab.rules import decide, normalize_date
+from ceab.selectors import QUEUE_LIMIT
 from ceab.state import ACTIVE, State
 
 st.set_page_config(page_title='CEAB/DJ · Conferência',page_icon='⚖️',layout='wide')
@@ -41,9 +42,12 @@ def browser_controls():
             except (ValueError,OSError) as exc: st.error(str(exc))
         if browser_open:
             st.success('Navegador aberto com o perfil salvo.')
+        limit = st.slider('Processos a processar',1,QUEUE_LIMIT,value=QUEUE_LIMIT,
+                          disabled=not browser_open or bool(latest and latest['queue_started']),
+                          help='Quantos processos desta página (até 100) o robô abrirá e preencherá nesta execução. A paginação do eproc continua em 100.')
         if st.button('Iniciar processamento',type='primary',disabled=not active or not browser_open or bool(latest and latest['queue_started']),width='stretch'):
             try:
-                state.command(latest['id'],'iniciar')
+                state.command(latest['id'],'iniciar',{'limit':limit})
                 st.rerun()
             except ValueError as exc: st.error(str(exc))
         if browser_open and st.button('Encerrar navegador',width='stretch'):
@@ -85,7 +89,7 @@ def browser_controls():
                 launch(state,test_mode,cdp_url)
                 st.rerun()
             except (ValueError,OSError) as exc: st.error(str(exc))
-    st.caption('Abra a Lista de Processos por Localizador. Ao iniciar, o sistema define 100 por página e abre um processo por vez. As abas preenchidas ficam disponíveis para conferência.')
+    st.caption('Abra a Lista de Processos por Localizador. Ao iniciar, o sistema define 100 por página e abre um processo por vez, até o total escolhido em "Processos a processar". As abas preenchidas ficam disponíveis para conferência.')
 
 with st.sidebar:
     browser_controls()
