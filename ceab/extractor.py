@@ -9,6 +9,9 @@ from .rules import DATE_PATTERN, normalize, normalize_date, decide
 
 # Formato de data compartilhado com normalize_date (nome mantido para importadores).
 DATE = DATE_PATTERN
+# Início de célula com aparência de data, inclusive formatos não aceitos (ano com
+# 2 dígitos, ordem ISO). Serve apenas para não descartar uma data ilegível em silêncio.
+DATE_LIKE_START = re.compile(r'^(?:\d{1,2}[./-]\d{1,2}[./-]\d+|\d{4}[./-]\d{2}[./-]\d{2})')
 CNJ = r'\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}'
 MONEY = r'R\s*\$\s*([\d.]+,\d{2})'
 ANCHOR = 'TABELA COM DADOS PARA CUMPRIMENTO'
@@ -190,8 +193,15 @@ def build_benefit(text, values, amount_window, expected_process=None):
     for key in ('dib', 'dip', 'dcb'):
         cell = values.get(key, '').strip()
         if key == 'dcb':
+            # DCB é opcional, mas uma célula que começa com data em formato não
+            # aceito não pode ser descartada em silêncio.
             match = re.match(DATE, cell)
-            dates[key] = normalize_date(match[0]) if match else None
+            if match:
+                dates[key] = normalize_date(match[0])
+            elif DATE_LIKE_START.match(cell):
+                raise AutomationError('DATA_AUSENTE_OU_INVALIDA', f'DCB em formato não reconhecido: {cell}.')
+            else:
+                dates[key] = None
         else:
             # Remover parênteses da célula; jamais procurar na coluna de nota.
             cell = re.sub(r'\([^)]*\)', '', cell)

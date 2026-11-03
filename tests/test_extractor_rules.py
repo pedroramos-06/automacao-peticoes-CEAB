@@ -212,3 +212,46 @@ def test_two_digit_year_in_dib_or_dip_is_rejected(field,current,raw):
     content=HTML_CONCESSAO.replace(f'<td>{field}</td><td>{current}</td>',f'<td>{field}</td><td>{raw}</td>')
     with pytest.raises(AutomationError) as exc: extract_html(content)
     assert exc.value.code=='DATA_AUSENTE_OU_INVALIDA'
+
+
+@pytest.mark.parametrize('dcb,expected',[
+    ('30-09-2028','30/09/2028'),
+    ('30.09.2028 (prevista)','30/09/2028'),
+    ('',None),
+    ('Regra cita 17/06/2015',None),
+    ('A apurar',None),
+])
+def test_optional_dcb_keeps_accepting_only_dates_at_the_cell_start(dcb,expected):
+    content=HTML_CONCESSAO.replace('<td>Regra cita 17/06/2015</td>',f'<td>{dcb}</td>')
+    assert extract_html(content).dcb==expected
+
+
+@pytest.mark.parametrize('dcb',[
+    '30/09/28',
+    '30/09/20281',
+    '2028-09-30',
+    '31/02/2028',
+])
+def test_dcb_in_unrecognized_date_format_is_reported(dcb):
+    content=HTML_CONCESSAO.replace('<td>Regra cita 17/06/2015</td>',f'<td>{dcb}</td>')
+    with pytest.raises(AutomationError) as exc: extract_html(content)
+    assert exc.value.code=='DATA_AUSENTE_OU_INVALIDA'
+    assert dcb in str(exc.value)
+
+
+def test_dcb_in_unrecognized_date_format_is_reported_in_layout_text():
+    from ceab.extractor import text_values,build_benefit
+    text='''NÚMERO: 00000000020264060001
+TABELA COM DADOS PARA CUMPRIMENTO
+Tipo       CONCESSÃO
+Espécie    Benefício sintético
+DIB        22/04/2025
+DIP        01/09/2026
+DCB        30/09/28
+Valor dos atrasados    VALOR DEVIDO: R$ 100,00
+Honorários R$ 0,00'''
+    values,amount=text_values(text)
+    assert values['dcb']=='30/09/28'
+    with pytest.raises(AutomationError) as exc: build_benefit(text,values,amount)
+    assert exc.value.code=='DATA_AUSENTE_OU_INVALIDA'
+    assert '30/09/28' in str(exc.value)
